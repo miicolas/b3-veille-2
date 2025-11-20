@@ -1,14 +1,21 @@
-// Configuration du canvas
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
 
-let width, height;
 
-// Paramètres des fractales
+// FRACTALES HEXAGONALES
+// ----------------------------------------------------
+let DESSIN = 87;
+
+// ----------------------------------------------------
+const PI = Math.PI;
 const DEPTH = 3;
 const SIZE = 120;
 const SHAPE_COUNT = 5;
 
+let width, height;
+let svgPath = '';
+let svgDefs = '';
+let gradientId = 0;
+
+// ----------------------------------------------------
 // Classe représentant une forme fractale avec ses enfants
 class Shape {
     constructor(x, y, size, depth, hue, rotation) {
@@ -26,9 +33,8 @@ class Shape {
             const distance = size * 0.75;
             const childCount = 5;
 
-            //Création des enfants de la forme fractale
             for (let i = 0; i < childCount; i++) {
-                const angle = (i / childCount) * Math.PI * 2;
+                const angle = (i / childCount) * PI * 2;
                 const childX = x + Math.cos(angle) * distance;
                 const childY = y + Math.sin(angle) * distance;
                 const childHue = (hue + 30) % 360;
@@ -39,63 +45,112 @@ class Shape {
         }
     }
 
-    //Dessine la forme fractale
-    draw() {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.rotation);
-
-        //Calcul de l'opacité de la forme fractale
+    // Génère le path SVG pour cette forme
+    toSVG() {
         const opacity = 0.4 + (this.depth / DEPTH) * 0.4;
 
-        //Création du gradient de la forme fractale
-        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
-        gradient.addColorStop(0, `hsla(${this.hue}, 85%, 65%, ${opacity})`);
-        gradient.addColorStop(0.7, `hsla(${this.hue + 20}, 80%, 55%, ${opacity * 0.7})`);
-        gradient.addColorStop(1, `hsla(${this.hue + 40}, 75%, 45%, 0)`);
+        // Création du gradient
+        const gId = `grad${gradientId++}`;
+        svgDefs += `<radialGradient id="${gId}">`;
+        svgDefs += `<stop offset="0%" style="stop-color:hsla(${this.hue}, 85%, 65%, ${opacity})" />`;
+        svgDefs += `<stop offset="70%" style="stop-color:hsla(${this.hue + 20}, 80%, 55%, ${opacity * 0.7})" />`;
+        svgDefs += `<stop offset="100%" style="stop-color:hsla(${this.hue + 40}, 75%, 45%, 0)" />`;
+        svgDefs += `</radialGradient>`;
 
-        ctx.fillStyle = gradient;
-        ctx.strokeStyle = `hsla(${this.hue}, 90%, 75%, ${opacity * 0.8})`;
-        ctx.lineWidth = 2;
-
-        ctx.beginPath();
-        //Dessine la forme fractale
+        // Points de l'hexagone
+        let points = [];
         for (let i = 0; i < 6; i++) {
-            const angle = (i / 6) * Math.PI * 2;
+            const angle = (i / 6) * PI * 2 + this.rotation;
             const radius = this.size * (1 + Math.sin(angle * 3) * 0.1);
-            const x = Math.cos(angle) * radius;
-            const y = Math.sin(angle) * radius;
-
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+            const x = this.x + Math.cos(angle) * radius;
+            const y = this.y + Math.sin(angle) * radius;
+            points.push(`${x.toFixed(2)},${y.toFixed(2)}`);
         }
-        ctx.closePath();
-        ctx.fill();
-        //Dessine le contour de la forme fractale
-        ctx.stroke();
 
-        ctx.restore();
-        //Dessine les enfants de la forme fractale
-        this.children.forEach(child => child.draw());
+        svgPath += `<polygon points="${points.join(' ')}" `;
+        svgPath += `fill="url(#${gId})" `;
+        svgPath += `stroke="hsla(${this.hue}, 90%, 75%, ${opacity * 0.8})" `;
+        svgPath += `stroke-width="2" />\n`;
+
+        // Dessine récursivement les enfants
+        this.children.forEach(child => child.toSVG());
     }
 }
 
-//Dessine le fond du canvas
-function drawBackground() {
-    const gradient = ctx.createRadialGradient(
-        width / 2, height / 2, 0,
-        width / 2, height / 2, Math.max(width, height) * 0.7
-    );
-
-    gradient.addColorStop(0, 'hsl(240, 25%, 8%)');
-    gradient.addColorStop(0.5, 'hsl(260, 20%, 5%)');
-    gradient.addColorStop(1, 'hsl(0, 0%, 2%)');
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
+// ----------------------------------------------------
+// Fonction LPRINT pour construire le SVG
+function LPRINT(cmd) {
+    svgPath += cmd;
 }
 
-//Dessine les connexions entre les formes fractales
+// ----------------------------------------------------
+// Fonction INIT pour initialiser le SVG
+function INIT(options = {}) {
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    svgPath = '';
+    svgDefs = '';
+    gradientId = 0;
+
+    // Fond avec gradient radial
+    const bgGradId = 'bgGrad';
+    svgDefs += `<radialGradient id="${bgGradId}" cx="50%" cy="50%" r="70%">`;
+    svgDefs += `<stop offset="0%" style="stop-color:hsl(240, 25%, 8%)" />`;
+    svgDefs += `<stop offset="50%" style="stop-color:hsl(260, 20%, 5%)" />`;
+    svgDefs += `<stop offset="100%" style="stop-color:hsl(0, 0%, 2%)" />`;
+    svgDefs += `</radialGradient>`;
+
+    svgPath += `<rect width="${width}" height="${height}" fill="url(#${bgGradId})" />\n`;
+}
+
+// ----------------------------------------------------
+// Fonction TRACE2 pour finaliser et afficher le SVG
+function TRACE2() {
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    svg.setAttribute("xmlns", svgNS);
+    svg.style.position = "fixed";
+    svg.style.top = "0";
+    svg.style.left = "0";
+
+    // Ajoute les définitions
+    const defs = document.createElementNS(svgNS, "defs");
+    defs.innerHTML = svgDefs;
+    svg.appendChild(defs);
+
+    // Ajoute le contenu
+    const g = document.createElementNS(svgNS, "g");
+    g.innerHTML = svgPath;
+    svg.appendChild(g);
+
+    // Remplace le canvas par le SVG
+    const canvas = document.getElementById('canvas');
+    if (canvas && canvas.parentNode) {
+        canvas.parentNode.replaceChild(svg, canvas);
+    } else {
+        document.body.appendChild(svg);
+    }
+
+    // Export SVG au clic sur 'E'
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'e' || e.key === 'E') {
+            const svgData = svg.outerHTML;
+            const blob = new Blob([svgData], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `fractal_${DESSIN}.svg`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+    });
+}
+
+// ----------------------------------------------------
+// Fonction de dessin des connexions
 function drawConnections(shapes) {
     for (let i = 0; i < shapes.length; i++) {
         for (let j = i + 1; j < shapes.length; j++) {
@@ -104,60 +159,62 @@ function drawConnections(shapes) {
             const distance = Math.sqrt(dx * dx + dy * dy);
             const maxDistance = Math.min(width, height) * 0.6;
 
-
             if (distance < maxDistance) {
                 const opacity = (1 - distance / maxDistance) * 0.2;
                 const hue = (i * 72 + j * 36) % 360;
 
-                const gradient = ctx.createLinearGradient(
-                    shapes[i].x, shapes[i].y,
-                    shapes[j].x, shapes[j].y
-                );
-                gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, ${opacity})`);
-                gradient.addColorStop(0.5, `hsla(${hue + 30}, 85%, 65%, ${opacity * 1.5})`);
-                gradient.addColorStop(1, `hsla(${hue + 60}, 80%, 60%, ${opacity})`);
+                const gId = `lineGrad${i}_${j}`;
+                svgDefs += `<linearGradient id="${gId}" x1="${shapes[i].x}" y1="${shapes[i].y}" x2="${shapes[j].x}" y2="${shapes[j].y}" gradientUnits="userSpaceOnUse">`;
+                svgDefs += `<stop offset="0%" style="stop-color:hsla(${hue}, 80%, 60%, ${opacity})" />`;
+                svgDefs += `<stop offset="50%" style="stop-color:hsla(${hue + 30}, 85%, 65%, ${opacity * 1.5})" />`;
+                svgDefs += `<stop offset="100%" style="stop-color:hsla(${hue + 60}, 80%, 60%, ${opacity})" />`;
+                svgDefs += `</linearGradient>`;
 
-                ctx.beginPath();
-                ctx.moveTo(shapes[i].x, shapes[i].y);
-                ctx.lineTo(shapes[j].x, shapes[j].y);
-                ctx.strokeStyle = gradient;
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
+                svgPath += `<line x1="${shapes[i].x}" y1="${shapes[i].y}" x2="${shapes[j].x}" y2="${shapes[j].y}" `;
+                svgPath += `stroke="url(#${gId})" stroke-width="1.5" />\n`;
             }
         }
     }
 }
 
-//Initialise le canvas et les formes fractales
-function init() {
-    // Récupération de la largeur et de la hauteur de la fenêtre
-    width = window.innerWidth;
-    height = window.innerHeight;
-    canvas.width = width;
-    canvas.height = height;
+// ----------------------------------------------------
+function setup() {
+    INIT({ svg: true });
 
-    // Création des formes fractales
     const shapes = [];
     const spacing = Math.min(width, height) * 0.28;
 
     // Création des formes fractales
     for (let i = 0; i < SHAPE_COUNT; i++) {
-        const angle = (i / SHAPE_COUNT) * Math.PI * 2;
+        const angle = (i / SHAPE_COUNT) * PI * 2;
         const x = width / 2 + Math.cos(angle) * spacing;
         const y = height / 2 + Math.sin(angle) * spacing;
         const hue = (i * 72) % 360;
-        const rotation = angle + Math.PI / 4;
+        const rotation = angle + PI / 4;
 
         shapes.push(new Shape(x, y, SIZE, DEPTH, hue, rotation));
     }
 
-    // Affichage des formes fractales
-    drawBackground();
-    // Affichage des connexions entre les formes fractales
+    // Génération des connexions
     drawConnections(shapes);
-    // Affichage des formes fractales
-    shapes.forEach(shape => shape.draw());
+
+    // Génération des formes
+    shapes.forEach(shape => shape.toSVG());
+
+    TRACE2();
 }
 
-window.addEventListener('resize', init);
-init({svg: true});
+function keyPressed() {
+    if (key === " " || key === "Spacebar") {
+      // Save as SVG
+      saveCanvas("mon_fractal", "svg");
+    }
+    if (key.toLowerCase() === "f") {
+      saveCanvas("mon_fractal", "png");
+    }
+    // Show instructions again after saving
+    showInstructions = true;
+  }
+
+// ----------------------------------------------------
+setup();
